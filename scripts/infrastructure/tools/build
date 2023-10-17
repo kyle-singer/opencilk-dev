@@ -1,0 +1,150 @@
+#!/bin/sh
+
+# Source directory for OpenCilk (root of the opencilk-project repository tree).
+# Must be an absolute pathname.
+case "$1" in
+    /*) OPENCILK_SOURCE="$1";;
+    -h|-help|--help) echo "USAGE: build source-dir build-dir [core-count]"; exit 1;;
+    -*) echo "unknown option $1"; exit 1;;
+    *) echo "First argument ($1) must be absolute pathname"; exit 1;;
+esac
+
+# Build directory for OpenCilk.  Must be an absolute pathname.  The Cheetah
+# runtime has to be built in its source directory, which should be a
+# sub-directory named "cheetah" within the OpenCilk source directory.
+# Similarly, the OpenCilk productivity tools source should be in a sub-directory
+# named "cilktools" within the OpenCilk source directory.  The OpenCilk compiler
+# will not be installed anywhere; run it out of ${BUILD_DIR}/bin.
+case "$2" in
+    /*) BUILD_DIR="$2";;
+    *) echo "Second argument ($2) must be absolute pathname"; exit 1;;
+esac
+
+DEFAULT_NCPU=1
+NCPU="${3}"
+if test -z "${NCPU}" -a -r /proc/cpuinfo ; then
+    NCPU=$(grep -c '^processor' /proc/cpuinfo 2> /dev/null)
+fi
+if test -z "${NCPU}" ; then
+    if test -x /sbin/sysctl -o -x /usr/sbin/sysctl ; then
+    NCPU=$(PATH=${PATH}:/sbin:/usr/sbin sysctl -n hw.ncpu)
+    fi
+fi
+if test -z "${NCPU}" -o 0 -eq "${NCPU}" ; then
+    echo "Unknown CPU count; using ${DEFAULT_NCPU}"
+    NCPU=${DEFAULT_NCPU}
+fi
+
+if ! test -d "${OPENCILK_SOURCE}" ; then
+    echo "OpenCilk source tree ${OPENCILK_SOURCE} does not exist" 1>&2
+    exit 1
+fi
+
+CHEETAH_SOURCE="${OPENCILK_SOURCE:?}/cheetah"
+CILKTOOLS_SOURCE="${OPENCILK_SOURCE:?}/cilktools"
+
+exec < /dev/null
+
+date # Who doesn't love timestamps?
+
+echo "Building with ${NCPU:?} parallel jobs"
+
+OS="$(uname -s)"
+
+if ! test -d "${OPENCILK_SOURCE}/llvm" ; then
+    echo "LLVM not found at ${OPENCILK_SOURCE}/llvm" 1>&2
+    exit 1
+fi
+if ! test -d "${CHEETAH_SOURCE}/runtime" ; then
+    echo "Cheetah runtime source not found at ${CHEETAH_SOURCE}/runtime" 1>&2
+    exit 1
+fi
+if ! test -d "${CILKTOOLS_SOURCE}" ; then
+    echo "OpenCilk productivity tools source not found at ${CILKTOOLS_SOURCE}" 1>&2
+    exit 1
+fi
+
+set -ex
+
+mkdir -p "${BUILD_DIR}"
+
+cd "${BUILD_DIR}"
+
+: "${OPENCILK_RELEASE:=Release}" # RelWithDebInfo to debug the compiler
+: "${OPENCILK_ASSERTIONS:=On}"   # Off to disable assertions in the compiler
+OPENCILK_COMPONENTS="clang"      # Required components; edit to add extra LLVM projects
+OPENCILK_RUNTIMES="cheetah;cilktools" # Required runtimes
+# Add compiler-rt project to enable support for Google sanitizers.
+case "${OS}" in
+    Darwin)
+        : "${COMPILER_RT_COMPONENTS:=";compiler-rt;libcxx;libcxxabi"}"
+        # Note: We restrict the build to enable only architecture targets on
+        # the host (via -DLLVM_TARGETS_TO_BUILD=host) in order to work around
+        # an issue with recent versions of MacOSX and XCode trying to enable
+        # ARM support (c.f., https://trac.macports.org/ticket/61555).
+        TARGETS="host"
+        OPENCILK_INSTALL_PREFIX=/opt/opencilk-2
+        ;;
+    *BSD)
+        # An older version required compiler-rt in OPENCILK_RUNTIMES
+        # but the combination of FreeBSD 13.1 and LLVM 14 does not.
+        # If compiler-rt is moved back to RUNTIMES the asan variant
+        # of Cheetah's personality.c file may need an explicit
+        # dependency on the asan library in compiler-rt.
+        : "${COMPILER_RT_COMPONENTS:=";compiler-rt"}"
+        # Standard FreeBSD target list
+        TARGETS="AArch64;ARM;Mips;PowerPC;RISCV;Sparc;X86"
+        OPENCILK_INSTALL_PREFIX=/opt/opencilk-2
+        ;;
+    *)
+        : "${COMPILER_RT_COMPONENTS:=";compiler-rt"}"
+        TARGETS="AArch64;X86"
+        OPENCILK_INSTALL_PREFIX=/opt/opencilk-2
+        ;;
+esac
+# TODO: Add support to optionally enable other popular features on
+# systems that support them.  Some example features include:
+#  - LLD, enabled by adding `lld` to the COMPONENTS list.
+#  - LLDB, enabled by adding `lldb` to the COMPONENTS list.
+#  - gold-linker support, enabled by passing the additional flag
+#  `-DLLVM_BINUTILS_INCDIR=<path>` to cmake, where `<path>/plugin-api.h`
+#  exists.  Typically, `<path>` is `/usr/include` on systems that have
+#  the GNU BFD development files installed.
+COMPONENTS="${OPENCILK_COMPONENTS}${COMPILER_RT_COMPONENTS}"
+RUNTIMES="${OPENCILK_RUNTIMES}${COMPILER_RT_RUNTIMES}"
+
+cmake -DLLVM_ENABLE_PROJECTS="${COMPONENTS}" \
+      -DLLVM_ENABLE_RUNTIMES="${RUNTIMES}" \
+      -DLLVM_ENABLE_ASSERTIONS="${OPENCILK_ASSERTIONS:?}" \
+      -DLLVM_TARGETS_TO_BUILD="${TARGETS:?}" \
+      -DCMAKE_BUILD_TYPE="${OPENCILK_RELEASE:?}" \
+      -DCMAKE_INSTALL_PREFIX="${OPENCILK_INSTALL_PREFIX:?}" \
+      -DLLVM_OPTIMIZED_TABLEGEN=On \
+      "${OPENCILK_SOURCE}/llvm"
+# Alternatively, make -j "${NCPU}" using the native system make.
+# cmake 3.10 neeeds -- before -j.  cmake 3.16 understands -j
+cmake --build . -- -j "${NCPU}"
+# TODO: cmake --install ...
+
+case "${OS}" in
+    # Darwin is a special case.  The version is not embedded in the path.
+    Darwin)
+	TRIPLE=darwin
+	LIBNAME=libopencilk_osx.a
+	;;
+    *)
+	TRIPLE=$("${BUILD_DIR}/bin/clang" -print-target-triple)
+	LIBNAME=libopencilk.a
+	;;
+esac
+VERSION=$(sed -n '/set.PACKAGE_VERSION/s/^.* \([0-9.]*\))/\1/p' "${CHEETAH_SOURCE}/CMakeLists.txt")
+
+LIBPATH="${BUILD_DIR}/lib/clang/${VERSION}/lib/${TRIPLE}/${LIBNAME:?}"
+
+# Cheetah should have been built as part of LLVM
+if ! test -f "${LIBPATH}" ; then
+    echo "Cheetah runtime library not found at ${LIBPATH}"
+    exit 1
+fi
+
+date
