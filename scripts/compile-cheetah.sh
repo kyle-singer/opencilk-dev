@@ -74,10 +74,10 @@ for prefix in "${!PREFIX_TO_RSRC_DIR[@]}"; do
 
     cd "${CHEETAH_ROOT}"
 
-    cd handcomp_test
+    #cd handcomp_test
 
-    make RESOURCE_DIR="${CURR_BUILD_DIR}" RTS_LIBDIR_NAME="lib/linux"
-    for bench in ${HANDCOMP_BENCHES}; do
-        mv ${bench} "${CURR_HANDCOMP_BUILD_DIR}/${bench}"
-    done
+    #make RESOURCE_DIR="${CURR_BUILD_DIR}" RTS_LIBDIR_NAME="lib/linux"
+    #for bench in ${HANDCOMP_BENCHES}; do
+    #    mv ${bench} "${CURR_HANDCOMP_BUILD_DIR}/${bench}"
+    #done
 done
