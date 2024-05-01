@@ -1,0 +1,166 @@
+# NOTE: DO NOT MODIFY THIS FILE; IT WILL BE OVERWRITTEN WHEN RUNNING THE CONTAINER
+
+export APT_INTER_DIR="${HOME}/.apt-intercept"
+
+# TODO: Unused, but would be useful for checking add-apt-repository commands
+last_arg() {
+    for i in ${@}; do :; done
+    echo "${i}"
+}
+
+# TODO: Log when docker run happens or the user exits; maybe even do
+#       something more sophisticated where the reinstall-pkgs script
+#       can offer to reinstall packages from a specific `docker run`
+#       invocation. (Remember to cat that set of commands to the end
+#       of the current one if that is how it works)
+log-apt-command() {
+    APT_INTER_SCRIPT=${APT_INTER_DIR}/reinstall-pkgs
+
+    mkdir -p ${APT_INTER_DIR}
+    touch ${APT_INTER_SCRIPT}
+
+    if [ "$(head -1 ${APT_INTER_SCRIPT})" != "#!/bin/bash" ]; then
+        echo "#!/bin/bash" >> ${APT_INTER_SCRIPT}
+        chown --recursive $(id -run): ${APT_INTER_DIR}
+        chmod +x ${APT_INTER_SCRIPT}
+    fi
+
+    # TODO: It would be very nice to filter out redundant commands
+    #       For example, only keep an update if there was an add-apt-repository
+    #       after the previous update; only install a specific package a second time if it
+    #       was previously uninstalled (by a command in the file). Should keep uninstalls of packages
+    #       unless the last time the package was referenced was an existing matching uninstall.
+    #       
+    # For now, just handle duplicate upgrades and irrelevant updates (not happening after add-apt-repository)
+
+    # TODO: Filter out repetitive clean and autoclean (apt-get). What about build-dep, src, download, check?
+    # TODO: Filter out dry runs; filter out certain flags (e.g. add-apt-repository flags).
+    # TODO: Look at apt-key in more detail.
+    # These commands should always be recorded:
+    #   reinstall
+    #
+    # These commands could be filtered for duplicates with complex logic, but
+    # doesn't hurt too much to run them anyway (unless there are many):
+    #   install
+    #   remove
+    #   purge
+    #   add-apt-repository
+    #   apt-key
+    SAVE_CMD=1
+    CMD_STR="${*}"
+
+    if [[ "${CMD_STR}" == *" autoremove "* ]] || [[ "${CMD_STR}" == *" autoremove" ]]; then
+        GREP_RES=$(grep -E "${CMD_STR}""|upgrade| remove|purge|install" ${APT_INTER_SCRIPT})
+        # This autoremove was the last of the commands above; so this one is redundant.
+        # Note that it may still be redundant; we would need more complex history checking to be sure.
+        if [ $(echo "${GREP_RES}" | tail -1 -) == "${CMD_STR}" ]; then
+            SAVE_CMD=0
+        else
+            SAVE_CMD=1
+        fi
+    elif [[ "${CMD_STR}" == *" update "* ]] || [[ "${CMD_STR}" == *" update" ]]; then
+        grep "${CMD_STR}" ${APT_INTER_SCRIPT} > /dev/null
+        # If we found the command in the script already...
+        if [ ${?} -eq 0 ]; then
+            # even though we updated before, update again if there was an add-apt-repository command;
+            # use `grep -E` so the results will be displayed in the order they are found (grep <p1>\|<p2>
+            # matched p1 or p2, but first matches all of p1 then all of p2, so p2 is always after p1 if
+            # it exists).
+            GREP_RES=$(grep -E "${CMD_STR}""|add-apt-repository" ${APT_INTER_SCRIPT})
+            if [[ $(echo "${GREP_RES}" | tail -1 -) == *"add-apt-repository"* ]]; then
+                # There was an add-apt-repository, so save this cmd
+                SAVE_CMD=1
+            else
+                # There wasn't an add-apt-repository in the middle; skip saving this
+                SAVE_CMD=0
+            fi
+        else
+            # There wasn't an update command with this signature, so save it.
+            SAVE_CMD=1
+        fi
+    elif [[ "${CMD_STR}" == *" full-upgrade "* ]] \
+        || [[ "${CMD_STR}" == *" full-upgrade" ]] \
+        || [[ "${CMD_STR}" == *" dist-upgrade "* ]] \
+        || [[ "${CMD_STR}" == *" dist-upgrade" ]] \
+        || [[ "${CMD_STR}" == *" dselect-upgrade "* ]] \
+        || [[ "${CMD_STR}" == *" dselect-upgrade" ]] \
+        || [[ "${CMD_STR}" == *" upgrade "* ]] \
+        || [[ "${CMD_STR}" == *" upgrade" ]]; then
+        # Search for this specific upgrade command
+        grep "${CMD_STR}" ${APT_INTER_SCRIPT} > /dev/null
+        [ ${?} -eq 0 ] && SAVE_CMD=0 || SAVE_CMD=1
+    elif [[ "${CMD_STR}" == *" edit-sources" ]] \
+         || [[ "${CMD_STR}" == *" edit-sources "* ]]; then
+        SAVE_CMD=0
+        # If this is required, then you've done something I can't do much about,
+        # as I am not about to keylog you just because you want to edit a file.
+        # I suppose one could do a diff on the related file, and then apply it as a patch?
+        # TODO: The diff approach as above.
+        echo "#command sudo ${@}" >> ${APT_INTER_SCRIPT}
+        echo "echo You previously ran: 'sudo ${@}', the result of which isn't recorded." >> ${APT_INTER_SCRIPT}
+    elif [[ "${CMD_STR}" == *" search "*  ]] \
+         || [[ "${CMD_STR}" == *" list "* ]] \
+         || [[ "${CMD_STR}" == *" show "* ]] \
+         || [[ "${CMD_STR}" == *" -v "* ]] \
+         || [[ "${CMD_STR}" == *" -v" ]] \
+         || [[ "${CMD_STR}" == *" --version "* ]] \
+         || [[ "${CMD_STR}" == *" --version" ]] \
+         || [[ "${CMD_STR}" == *" -h" ]] \
+         || [[ "${CMD_STR}" == *" -h " ]] \
+         || [[ "${CMD_STR}" == *" --help" ]] \
+         || [[ "${CMD_STR}" == *" --help " ]]; then
+
+        SAVE_CMD=0
+    fi
+
+
+    if [ ${SAVE_CMD} -eq 1 ]; then
+
+        CURR_TIME="$(date +'%Y/%m/%d %H:00')"
+        grep "${CURR_TIME}" ${APT_INTER_SCRIPT} 2>&1 > /dev/null
+        RES=$?
+        if [ ${RES} -ne 0 ]; then
+            echo "# ${CURR_TIME}" >> ${APT_INTER_SCRIPT}
+        fi
+
+        echo "command sudo ${@}" >> ${APT_INTER_SCRIPT}
+    fi
+}
+
+apt-key() {
+    command sudo apt-key "${@}"
+    if [ "$?" -eq "0" ]; then
+        log-apt-command "apt-key ${@}"
+    fi
+}
+
+add-apt-repository() {
+    command sudo add-apt-repository "$@"
+    if [ "$?" -eq "0" ]; then
+        log-apt-command "add-apt-repository ${@}"
+    fi
+}
+
+apt() {
+    command sudo apt "$@"
+    if [ "$?" -eq "0" ]; then
+        log-apt-command apt ${@}
+    fi
+}
+
+apt-get() {
+    command sudo apt-get "$@"
+    if [ "$?" -eq "0" ]; then
+        log-apt-command "apt-get ${@}"
+    fi
+}
+
+sudo() {
+    if [ "$1" == "apt" ] || [ "$1" == "apt-get" ] || [ "$1" == "add-apt-repository" ]; then
+        eval ${@}
+    else
+        command sudo "${@}"
+    fi
+}
+
+export PATH="${PATH}:${APT_INTER_DIR}"
