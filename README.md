@@ -6,4 +6,6 @@ To Build:
 4) From inside the docker container (which starts in the scripts dir), run `./initial-build.sh`.
 5) From inside the docker container, run `./compile-cheetah.sh`.
 
-The handcomp_tests can now be built (inside the docker container) by cd'ing to src/cheetah/handcom_test, and running make.
+The OpenCilk compiler binaries should now be contained in build/opencilk/bin, and 2 versions of the runtime
+in build/cheetah/<version>. The handcompiled tests for the 2 versions of the runtime are contianed in
+directories within build/handcomp_test.
