@@ -24,7 +24,7 @@ BUILD_DIR_PATH="${PROJ_ROOT}/build/cheetah"
 HANDCOMP_BUILD_DIR_PATH="${PROJ_ROOT}/build/handcomp_test"
 
 HANDCOMP_BENCHES="fib mm_dac nqueens cilksort"
-COMMON_CFLAGS="-O3"
+COMMON_CFLAGS="-Wall -O3"
 #COMMON_RUNTIME_CFLAGS="-falign-functions=32"
 #COMMON_RUNTIME_CFLAGS="${COMMON_CFLAGS} --target=$(${LLVM_CONFIG} --host-target) -D_DEBUG -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -fno-semantic-interposition -Werror=date-time -Werror=unguarded-availability-new -Wextra -Wno-unused-parameter -Wwrite-strings -Wmissing-field-initializers -Wimplicit-fallthrough -Wcovered-switch-default -Wno-comment -Wstring-conversion -Wmisleading-indentation -Wctad-maybe-unsupported -ffunction-sections -fdata-sections -DNDEBUG -fPIC"
 COMMON_RUNTIME_CFLAGS="${COMMON_CFLAGS} -D_DEBUG -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -fno-semantic-interposition -Werror=date-time -Werror=unguarded-availability-new -Wextra -Wno-unused-parameter -Wwrite-strings -Wmissing-field-initializers -Wimplicit-fallthrough -Wcovered-switch-default -Wno-comment -Wstring-conversion -Wmisleading-indentation -Wctad-maybe-unsupported -ffunction-sections -fdata-sections -DNDEBUG -fPIC"
@@ -76,7 +76,7 @@ for prefix in "${!PREFIX_TO_RSRC_DIR[@]}"; do
 
     cd handcomp_test
 
-    make -B RESOURCE_DIR="${CURR_BUILD_DIR}/" RTS_LIBDIR_NAME="lib/linux" TIMING_COUNT=50
+    make -B RESOURCE_DIR="${CURR_BUILD_DIR}/" RTS_LIBDIR_NAME="lib/linux" TIMING_COUNT=50 RESOURCE_DIR="${CURR_BUILD_DIR}/"
     for bench in ${HANDCOMP_BENCHES}; do
         mv ${bench} "${CURR_HANDCOMP_BUILD_DIR}/${bench}"
     done
