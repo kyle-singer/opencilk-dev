@@ -76,7 +76,7 @@ for prefix in "${!PREFIX_TO_RSRC_DIR[@]}"; do
 
     cd handcomp_test
 
-    make RESOURCE_DIR="${CURR_BUILD_DIR}/" RTS_LIBDIR_NAME="lib/linux"
+    make -B RESOURCE_DIR="${CURR_BUILD_DIR}/" RTS_LIBDIR_NAME="lib/linux" TIMING_COUNT=50
     for bench in ${HANDCOMP_BENCHES}; do
         mv ${bench} "${CURR_HANDCOMP_BUILD_DIR}/${bench}"
     done
