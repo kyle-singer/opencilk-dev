@@ -4,3 +4,6 @@
 [submodule "src/cilktools"]
 	path = src/cilktools
 	url = git@github.com:OpenCilk/productivity-tools
+[submodule "src/cheetah"]
+	path = src/cheetah
+	url = https://github.com/kyle-singer/cheetah
