@@ -7,4 +7,4 @@ RTS_PEDIGREE_LIB=libopencilk-pedigrees-x86_64
 RTS_LIBDIR_NAME=lib/linux
 RESOURCE_DIR=/mnt/opencilk-dev/build/cheetah/sleep-build/
 
-TIMING_COUNT=10
+TIMING_COUNT=25
