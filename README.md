@@ -7,5 +7,5 @@ To Build:
 5) From inside the docker container, run `./compile-cheetah.sh`.
 
 The OpenCilk compiler binaries should now be contained in build/opencilk/bin, and 2 versions of the runtime
-in build/cheetah/<version>. The handcompiled tests for the 2 versions of the runtime are contianed in
+in build/cheetah/<version>. The handcompiled tests for the 2 versions of the runtime are contained in
 directories within build/handcomp_test.
