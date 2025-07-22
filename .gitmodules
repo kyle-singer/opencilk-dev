@@ -1,6 +1,6 @@
 [submodule "src/opencilk"]
 	path = src/opencilk
-	url = git@github.com:opencilk/opencilk-project
+	url = git@github.com:kyle-singer/opencilk-project
 [submodule "src/cilktools"]
 	path = src/cilktools
 	url = git@github.com:OpenCilk/productivity-tools
